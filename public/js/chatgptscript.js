@@ -138,9 +138,7 @@ const getBackstory = async () => {
     // console.log(data.choices[0].text);
     //add in a bit of text for the user to continue the story since there is not a clean way for Chatgpt to conclude output (sentence ending)
     const pElement = document.querySelector('#backstoryoutput');
-    pElement.textContent =
-      data.choices[0].text +
-      '...Use this as inspiration to flesh out the rest!';
+    pElement.textContent = (data.choices?.[0]?.text || "").trim();
   } catch (error) {
     console.error();
   }
