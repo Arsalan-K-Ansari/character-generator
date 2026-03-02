@@ -16,6 +16,7 @@
 // 	"class_id": 1,
 // 	"race_id": 2
 // }
+console.log("chatgptscript loaded ✅");
 
 const getBackstoryPrompt = async () => {
   const options = {
