@@ -8,6 +8,9 @@ The motivation for this project was our love for RPG games and our nerdy backgro
 
 No installation is required to access this web page! Please refer to the following deployment link to access the page: https://legendsmith-77384eb64fff.herokuapp.com/login
 
+Edit- New deployment link: https://legend-smith-092babe6f1ac.herokuapp.com/login
+(From Arsalan)
+
 ## Usage
 
 In order to use the app you need to first sign up and make an account.

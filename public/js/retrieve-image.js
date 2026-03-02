@@ -99,7 +99,7 @@ const grabImage = setInterval(async () => {
   const options = {
     method: 'GET',
     headers: {
-      'X-RapidAPI-Key': '39039e70a6mshdbb704a5dd7696ap1a11b7jsn86b2e034659e',
+      'X-RapidAPI-Key': '79b34024f1msh90fae889226021ep19a161jsn6277619c4984',
       'X-RapidAPI-Host': 'arimagesynthesizer.p.rapidapi.com',
     },
   };
