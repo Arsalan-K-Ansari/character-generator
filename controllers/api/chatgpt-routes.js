@@ -106,7 +106,7 @@ async function chatToCompletionShape({ prompt, maxTokens }) {
 // http://localhost:3001/api/chatgpt/namegen
 router.post("/namegen", async (req, res) => {
   try {
-    const prompt = req.body?.prompt ?? "";
+    const prompt = `Generate a creative fantasy character name. Only return the name, nothing else. ${req.body?.prompt ?? ""}`;
     const result = await chatToCompletionShape({ prompt, maxTokens: 100 });
     res.json(result);
   } catch (error) {
@@ -121,8 +121,8 @@ router.post("/namegen", async (req, res) => {
 // http://localhost:3001/api/chatgpt/getbackstory
 router.post("/getbackstory", async (req, res) => {
   try {
-    const prompt = req.body?.prompt ?? "";
-    const result = await chatToCompletionShape({ prompt, maxTokens: 300 });
+    const prompt = `Write a detailed fantasy character backstory (4-6 sentences). Do not include instructions or notes. ${req.body?.prompt ?? ""}`;
+    const result = await chatToCompletionShape({ prompt, maxTokens: 500 });
     res.json(result);
   } catch (error) {
     console.error(error);
