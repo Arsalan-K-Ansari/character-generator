@@ -125,7 +125,7 @@ router.post("/imagegen", async (req, res) => {
     if (!rapidKey) {
       return res.status(500).json({
         error:
-          "Missing RAPIDAPI_KEY (or IMAGE_API_KEY) in environment. Add it to your .env file.",
+          "Missing IMAGE_API_KEY in environment. Add it to your .env file (RapidAPI key).",
       });
     }
 
@@ -133,21 +133,22 @@ router.post("/imagegen", async (req, res) => {
     const genUrl =
       "https://ai-text-to-image-generator-flux-free-api.p.rapidapi.com/aaaaaaaaaaaaaaaaaiimagegenerator/quick.php";
 
-    const form = new URLSearchParams({
+    // Send JSON (RapidAPI playground examples for this API are JSON)
+    const payload = {
       prompt: String(prompt).trim(),
-      style_id: "4",
+      style_id: 4, // numeric
       size: "1-1",
-    }).toString();
+    };
 
     const genResp = await fetch(genUrl, {
       method: "POST",
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
+        "Content-Type": "application/json",
+        Accept: "application/json",
         "X-RapidAPI-Key": rapidKey,
         "X-RapidAPI-Host": "ai-text-to-image-generator-flux-free-api.p.rapidapi.com",
       },
-      body: form,
+      body: JSON.stringify(payload),
     });
 
     const genText = await genResp.text();
@@ -170,22 +171,12 @@ router.post("/imagegen", async (req, res) => {
       });
     }
 
-    // 2) Extract the image URL (thumb)
-    // Based on common response path shown in examples: result.data.results[0].thumb :contentReference[oaicite:5]{index=5}
-    const thumb =
+    // 2) Extract the image URL (thumb) + fallback search for any URL
+    let imageUrl =
       genJson?.result?.data?.results?.[0]?.thumb ||
       genJson?.data?.results?.[0]?.thumb ||
       genJson?.result?.results?.[0]?.thumb ||
       genJson?.results?.[0]?.thumb;
-
-    if (!thumb || typeof thumb !== "string") {
-      return res.status(502).json({
-        error: "Could not find image URL (thumb) in RapidAPI response",
-        response: genJson,
-      });
-    }
-
-    let imageUrl = thumb;
 
     if (!imageUrl) {
       // fallback: find any http(s) URL anywhere in the response JSON
@@ -206,7 +197,7 @@ router.post("/imagegen", async (req, res) => {
 
     if (!imgResp.ok) {
       return res.status(502).json({
-        error: `Failed to fetch generated image from thumb URL (${imgResp.status})`,
+        error: `Failed to fetch generated image from image URL (${imgResp.status})`,
         imageUrl,
       });
     }
@@ -218,7 +209,9 @@ router.post("/imagegen", async (req, res) => {
     return res.status(200).send(Buffer.from(arrayBuffer));
   } catch (err) {
     console.error("RapidAPI imagegen error:", err);
-    return res.status(500).json({ error: err?.message || "Image generation failed" });
+    return res
+      .status(500)
+      .json({ error: err?.message || "Image generation failed" });
   }
 });
 
