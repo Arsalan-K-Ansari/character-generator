@@ -129,7 +129,7 @@ router.post("/imagegen", async (req, res) => {
     const img = await client.images.generate({
       model: "gpt-image-1",
       prompt,
-      size: "512x512",
+      size: "auto",
       // quality: "medium", // optional: low/medium/high/auto (if supported)
       output_format: "png",
     });
