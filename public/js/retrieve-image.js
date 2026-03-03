@@ -149,7 +149,7 @@
 // // console.log('retrieval script connected...');
 
 
-// new script for open AI Image generation
+// new script for rapidAI Image generation
 
 document.addEventListener("DOMContentLoaded", () => {
   const parent = document.getElementById("testtext");
@@ -197,6 +197,24 @@ document.addEventListener("DOMContentLoaded", () => {
       body: JSON.stringify({ prompt }),
     });
 
+    const contentType = res.headers.get("content-type") || "";
+
+    // Case 1: backend returns JSON with imageUrl
+    if (contentType.includes("application/json")) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Imagegen failed (${res.status})`);
+      }
+
+      if (!data.imageUrl) {
+        throw new Error("No imageUrl returned from backend");
+      }
+
+      img.src = data.imageUrl;
+      return;
+    }
+
+    // Case 2: backend returns image bytes
     if (!res.ok) {
       const t = await res.text().catch(() => "");
       throw new Error(`Imagegen failed (${res.status}): ${t}`);

@@ -103,24 +103,17 @@
 
 // module.exports = router;
 
-// New open AI
+// New rapid api
 
 const express = require("express");
-const { OpenAI } = require("openai");
-
 const router = express.Router();
-
-const client = new OpenAI({ apiKey: process.env.CHATAPI_KEY });
 
 /**
  * POST /api/images/imagegen
  * body: { prompt: string }
- * returns: image/png bytes
+ * returns: image bytes
  */
 router.post("/imagegen", async (req, res) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000); // 25 seconds max
-
   try {
     const prompt = req.body?.prompt;
 
@@ -128,39 +121,84 @@ router.post("/imagegen", async (req, res) => {
       return res.status(400).json({ error: "Missing prompt" });
     }
 
-    const img = await client.images.generate(
-      {
-        model: "gpt-image-1",
-        prompt,
-        size: "auto", // 👈 important
-        output_format: "png",
-      },
-      { signal: controller.signal }
-    );
-
-    const b64 = img?.data?.[0]?.b64_json;
-
-    if (!b64) {
-      return res.status(502).json({ error: "No image returned from OpenAI" });
+    const rapidKey = process.env.IMAGE_API_KEY;
+    if (!rapidKey) {
+      return res.status(500).json({
+        error:
+          "Missing RAPIDAPI_KEY (or IMAGE_API_KEY) in environment. Add it to your .env file.",
+      });
     }
 
-    const buffer = Buffer.from(b64, "base64");
+    // 1) Ask RapidAPI to generate
+    const genUrl =
+      "https://ai-text-to-image-generator-flux-free-api.p.rapidapi.com/aaaaaaaaaaaaaaaaaiimagegenerator/quick.php";
 
-    res.set("Content-Type", "image/png");
-    return res.status(200).send(buffer);
-
-  } catch (err) {
-    if (err.name === "AbortError") {
-      return res.status(504).json({ error: "Image generation timed out. Try again." });
-    }
-
-    console.error("OpenAI imagegen error:", err);
-    return res.status(500).json({
-      error: err?.message || "Image generation failed",
+    // RapidAPI examples use form-url-encoded fields: prompt, style_id, size :contentReference[oaicite:4]{index=4}
+    const body = new URLSearchParams({
+      prompt,
+      style_id: "4",
+      size: "1-1",
     });
 
-  } finally {
-    clearTimeout(timeout);
+    const genResp = await fetch(genUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-rapidapi-key": rapidKey,
+        "x-rapidapi-host": "ai-text-to-image-generator-flux-free-api.p.rapidapi.com",
+      },
+      body,
+    });
+
+    const genText = await genResp.text();
+
+    if (!genResp.ok) {
+      return res.status(genResp.status).send(genText);
+    }
+
+    let genJson;
+    try {
+      genJson = JSON.parse(genText);
+    } catch {
+      return res.status(502).json({
+        error: "RapidAPI returned non-JSON response",
+        raw: genText,
+      });
+    }
+
+    // 2) Extract the image URL (thumb)
+    // Based on common response path shown in examples: result.data.results[0].thumb :contentReference[oaicite:5]{index=5}
+    const thumb =
+      genJson?.result?.data?.results?.[0]?.thumb ||
+      genJson?.data?.results?.[0]?.thumb ||
+      genJson?.result?.results?.[0]?.thumb ||
+      genJson?.results?.[0]?.thumb;
+
+    if (!thumb || typeof thumb !== "string") {
+      return res.status(502).json({
+        error: "Could not find image URL (thumb) in RapidAPI response",
+        response: genJson,
+      });
+    }
+
+    // 3) Fetch the actual image bytes and return them to the browser as a blob
+    const imgResp = await fetch(thumb);
+
+    if (!imgResp.ok) {
+      return res.status(502).json({
+        error: `Failed to fetch generated image from thumb URL (${imgResp.status})`,
+        thumb,
+      });
+    }
+
+    const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await imgResp.arrayBuffer();
+
+    res.set("Content-Type", contentType);
+    return res.status(200).send(Buffer.from(arrayBuffer));
+  } catch (err) {
+    console.error("RapidAPI imagegen error:", err);
+    return res.status(500).json({ error: err?.message || "Image generation failed" });
   }
 });
 
