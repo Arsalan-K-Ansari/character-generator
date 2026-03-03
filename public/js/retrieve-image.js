@@ -152,7 +152,7 @@
 // new script for rapidAI Image generation
 
 document.addEventListener("DOMContentLoaded", () => {
-  const parent = document.getElementById("testtext");
+  const parent = document.getElementById("imgwrap");
   if (!parent) return;
 
   function ensureImg() {
