@@ -149,97 +149,67 @@
 // // console.log('retrieval script connected...');
 
 
-// new script
+// new script for open AI Image generation
 
 document.addEventListener("DOMContentLoaded", () => {
-  const parent = document.getElementById("testtext"); // where you want the image
+  const parent = document.getElementById("testtext");
   if (!parent) return;
 
-  const showStatus = (msg) => {
-    let p = document.getElementById("imgstatus");
-    if (!p) {
-      p = document.createElement("p");
-      p.id = "imgstatus";
-      parent.appendChild(p);
+  function ensureImg() {
+    let img = document.getElementById("genimg");
+    if (!img) {
+      img = document.createElement("img");
+      img.id = "genimg";
+      img.alt = "Generated character";
+      parent.appendChild(img);
     }
-    p.textContent = msg;
-  };
+    return img;
+  }
 
-  const getUserPrompt = async () => {
-    const res = await fetch("/api/characters");
+  async function getUserPrompt() {
+    const res = await fetch("/api/characters", { cache: "no-store" });
     const data = await res.json();
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return "fantasy character portrait, highly detailed, cinematic lighting";
+    }
+
     const last = data[data.length - 1];
+    const gender = last.character_gender ?? "unknown";
+    const hair = last.hair_color ?? "dark";
+    const eyes = last.eye_color ?? "brown";
+    const race = last.race?.race_name ?? "human";
+    const klass = last.class?.class_name ?? "adventurer";
 
-    const gender = last.character_gender;
-    const hair = last.hair_color;
-    const eyes = last.eye_color;
-    const race = last.race?.race_name;
-    const cls = last.class?.class_name;
+    return `${gender} ${race} ${klass} fantasy character portrait, ${hair} hair, ${eyes} eyes, highly detailed, cinematic lighting`;
+  }
 
-    return `${gender} ${race} ${cls} fantasy character with ${hair} hair and ${eyes} eyes`;
-  };
-
-  const startImageGen = async () => {
-    showStatus("Generating image...");
+  // Call this from your "Generate Character" click handler
+  async function generateImage() {
+    const img = ensureImg();
+    img.removeAttribute("src");
 
     const prompt = await getUserPrompt();
 
     const res = await fetch("/api/images/imagegen", {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ prompt }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
     });
 
-    const json = await res.json(); // your backend returns JSON string currently; better return JSON
-    // If your backend still does res.send(result) (string), use: const json = JSON.parse(await res.text());
-
-    if (!json.hash) {
-      showStatus("No hash returned from image generator.");
-      return;
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Imagegen failed (${res.status}): ${t}`);
     }
 
-    await pollForImage(json.hash);
-  };
+    const blob = await res.blob();
+    img.src = URL.createObjectURL(blob);
+  }
 
-  const pollForImage = async (hash) => {
-    const maxTries = 40; // ~40 * 1500ms = ~60s
-    const delayMs = 1500;
+  // If you already auto-run generation on output page:
+  generateImage().catch(console.error);
 
-    for (let i = 0; i < maxTries; i++) {
-      showStatus(`Waiting for image... (${i + 1}/${maxTries})`);
-
-      const res = await fetch(`/api/images/genimg?hash=${encodeURIComponent(hash)}`);
-
-      // If still processing, backend returns 202 JSON
-      const ct = res.headers.get("content-type") || "";
-      if (res.status === 202 || ct.includes("application/json")) {
-        await new Promise((r) => setTimeout(r, delayMs));
-        continue;
-      }
-
-      if (!res.ok) {
-        showStatus("Error fetching generated image.");
-        return;
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      document.getElementById("genimg")?.remove();
-      const img = document.createElement("img");
-      img.id = "genimg";
-      img.src = url;
-      parent.appendChild(img);
-
-      showStatus(""); // clear
-      return;
-    }
-
-    showStatus("Timed out waiting for image. Try again.");
-  };
-
-  startImageGen().catch((e) => {
-    console.error(e);
-    showStatus("Image generation failed.");
-  });
+  // Otherwise, expose generateImage() and call it from your existing generate flow.
 });
+
+

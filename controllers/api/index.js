@@ -5,7 +5,7 @@ const chatgptRoutes = require('./chatgpt-routes');
 const classRoutes = require('./class-routes');
 const raceRoutes = require('./race-routes');
 const charRoutes = require('./character-routes');
-const openAiRoute = require('./arimagesynthesizeri-image-routes');
+const openAiRoute = require('./openai-image-routes');
 
 router.use('/users', userRoutes);
 router.use('/chatgpt', chatgptRoutes);
