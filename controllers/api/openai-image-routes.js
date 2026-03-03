@@ -125,12 +125,12 @@ router.post("/imagegen", async (req, res) => {
       return res.status(400).json({ error: "Missing prompt" });
     }
 
-    // GPT image models return base64-encoded image data. :contentReference[oaicite:1]{index=1}
+    // GPT image models return base64-encoded image data.
     const img = await client.images.generate({
       model: "gpt-image-1",
       prompt,
       size: "1024x1024",
-      // quality: "medium", // optional: low/medium/high/auto (if supported for your model) :contentReference[oaicite:2]{index=2}
+      // quality: "medium", // optional: low/medium/high/auto (if supported)
       output_format: "png",
     });
 
