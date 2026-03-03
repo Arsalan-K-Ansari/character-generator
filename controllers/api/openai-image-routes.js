@@ -118,6 +118,9 @@ const client = new OpenAI({ apiKey: process.env.CHATAPI_KEY });
  * returns: image/png bytes
  */
 router.post("/imagegen", async (req, res) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000); // 25 seconds max
+
   try {
     const prompt = req.body?.prompt;
 
@@ -125,30 +128,39 @@ router.post("/imagegen", async (req, res) => {
       return res.status(400).json({ error: "Missing prompt" });
     }
 
-    // GPT image models return base64-encoded image data.
-    const img = await client.images.generate({
-      model: "gpt-image-1",
-      prompt,
-      size: "auto",
-      // quality: "medium", // optional: low/medium/high/auto (if supported)
-      output_format: "png",
-    });
+    const img = await client.images.generate(
+      {
+        model: "gpt-image-1",
+        prompt,
+        size: "auto", // 👈 important
+        output_format: "png",
+      },
+      { signal: controller.signal }
+    );
 
     const b64 = img?.data?.[0]?.b64_json;
+
     if (!b64) {
       return res.status(502).json({ error: "No image returned from OpenAI" });
     }
 
     const buffer = Buffer.from(b64, "base64");
+
     res.set("Content-Type", "image/png");
-    return res.send(buffer);
+    return res.status(200).send(buffer);
+
   } catch (err) {
+    if (err.name === "AbortError") {
+      return res.status(504).json({ error: "Image generation timed out. Try again." });
+    }
+
     console.error("OpenAI imagegen error:", err);
-    const msg =
-      err?.error?.message ||
-      err?.message ||
-      "Failed to generate image";
-    return res.status(500).json({ error: msg });
+    return res.status(500).json({
+      error: err?.message || "Image generation failed",
+    });
+
+  } finally {
+    clearTimeout(timeout);
   }
 });
 
