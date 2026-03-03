@@ -133,27 +133,31 @@ router.post("/imagegen", async (req, res) => {
     const genUrl =
       "https://ai-text-to-image-generator-flux-free-api.p.rapidapi.com/aaaaaaaaaaaaaaaaaiimagegenerator/quick.php";
 
-    // RapidAPI examples use form-url-encoded fields: prompt, style_id, size :contentReference[oaicite:4]{index=4}
-    const body = new URLSearchParams({
-      prompt,
+    const form = new URLSearchParams({
+      prompt: String(prompt).trim(),
       style_id: "4",
       size: "1-1",
-    });
+    }).toString();
 
     const genResp = await fetch(genUrl, {
       method: "POST",
       headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        "x-rapidapi-key": rapidKey,
-        "x-rapidapi-host": "ai-text-to-image-generator-flux-free-api.p.rapidapi.com",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "X-RapidAPI-Key": rapidKey,
+        "X-RapidAPI-Host": "ai-text-to-image-generator-flux-free-api.p.rapidapi.com",
       },
-      body,
+      body: form,
     });
 
     const genText = await genResp.text();
 
     if (!genResp.ok) {
-      return res.status(genResp.status).send(genText);
+      return res.status(genResp.status).json({
+        error: "RapidAPI generation failed",
+        status: genResp.status,
+        raw: genText,
+      });
     }
 
     let genJson;
@@ -181,13 +185,29 @@ router.post("/imagegen", async (req, res) => {
       });
     }
 
+    let imageUrl = thumb;
+
+    if (!imageUrl) {
+      // fallback: find any http(s) URL anywhere in the response JSON
+      const jsonString = JSON.stringify(genJson);
+      const match = jsonString.match(/https?:\/\/[^"\\\s]+/);
+      if (match) imageUrl = match[0];
+    }
+
+    if (!imageUrl || typeof imageUrl !== "string") {
+      return res.status(502).json({
+        error: "Could not find an image URL in RapidAPI response",
+        response: genJson,
+      });
+    }
+
     // 3) Fetch the actual image bytes and return them to the browser as a blob
-    const imgResp = await fetch(thumb);
+    const imgResp = await fetch(imageUrl);
 
     if (!imgResp.ok) {
       return res.status(502).json({
         error: `Failed to fetch generated image from thumb URL (${imgResp.status})`,
-        thumb,
+        imageUrl,
       });
     }
 
