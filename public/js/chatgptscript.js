@@ -204,12 +204,11 @@
 // // console.log('bananas');
 
 
-// New script 
+// New script
 
 // public/js/chatgptscript.js
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Only run on the output page where these elements exist
   const parentElement = document.querySelector("#backstoryappend");
   const parentElementName = document.querySelector("#charnameappend");
   const reGenButton = document.querySelector("#regen");
@@ -218,114 +217,128 @@ document.addEventListener("DOMContentLoaded", () => {
 
   console.log("chatgptscript loaded ✅");
 
-  const getBackstoryPrompt = async () => {
+  // Ensure output nodes exist (so we can just update textContent)
+  const ensureP = (parent, id, initialText = "") => {
+    let el = document.querySelector(`#${id}`);
+    if (!el) {
+      el = document.createElement("p");
+      el.id = id;
+      parent.append(el);
+    }
+    el.textContent = initialText;
+    return el;
+  };
+
+  const backstoryEl = ensureP(parentElement, "backstoryoutput", "Loading, please wait...");
+  const nameEl = ensureP(parentElementName, "genname", "Loading, please wait...");
+
+  // Fetch latest character ONCE and reuse it for both prompts
+  const fetchLastCharacter = async () => {
     try {
       const response = await fetch("/api/characters", {
         method: "GET",
-        headers: { "Content-Type": "application/json" },
+        headers: { Accept: "application/json" },
+        cache: "no-store", // helps avoid 304/cached surprises
       });
+
+      if (!response.ok) return null;
+
       const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) return null;
 
-      if (!Array.isArray(data) || data.length === 0) {
-        return "Generate a cool fantasy character backstory (4-6 sentences).";
-      }
-
-      const lastCharacter = data[data.length - 1];
-      const characterGender = lastCharacter.character_gender;
-      const characterClass = lastCharacter.class?.class_name;
-      const characterRace = lastCharacter.race?.race_name;
-
-      return `Without using the character name, generate a cool backstory for a ${characterGender} ${characterClass} ${characterRace} fantasy character. Do not use the character name.`;
-    } catch (error) {
-      console.error(error);
-      return "Generate a cool fantasy character backstory (4-6 sentences).";
+      return data[data.length - 1];
+    } catch (err) {
+      console.error("Error fetching /api/characters:", err);
+      return null;
     }
   };
 
-  const getNamePrompt = async () => {
+  const buildPrompts = (lastCharacter) => {
+    if (!lastCharacter) {
+      return {
+        backstoryPrompt: "Generate a cool fantasy character backstory (4-6 sentences).",
+        namePrompt: "Generate a cool fantasy character name. Only return the name.",
+      };
+    }
+
+    const characterGender = lastCharacter.character_gender || "unknown";
+    const characterClass = lastCharacter.class?.class_name || "adventurer";
+    const characterRace = lastCharacter.race?.race_name || "human";
+
+    return {
+      backstoryPrompt: `Without using the character name, generate a cool backstory for a ${characterGender} ${characterClass} ${characterRace} fantasy character. Keep it 4-6 sentences. Do not use the character name.`,
+      namePrompt: `Generate a cool name for a ${characterGender} ${characterClass} ${characterRace} fantasy character from the 1800s. Only return the name.`,
+    };
+  };
+
+  const postJson = async (url, bodyObj) => {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(bodyObj),
+    });
+
+    // Try to parse JSON even on errors (so we can display message)
+    let data = null;
     try {
-      const response = await fetch("/api/characters", {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await response.json();
+      data = await response.json();
+    } catch {
+      data = null;
+    }
 
-      if (!Array.isArray(data) || data.length === 0) {
-        return "Generate a cool fantasy character name. Only return the name.";
-      }
+    if (!response.ok) {
+      const msg = data?.error?.message || data?.error || `Request failed (${response.status})`;
+      throw new Error(msg);
+    }
 
-      const lastCharacter = data[data.length - 1];
-      const characterGender = lastCharacter.character_gender;
-      const characterClass = lastCharacter.class?.class_name;
-      const characterRace = lastCharacter.race?.race_name;
+    return data;
+  };
 
-      return `Generate a cool name for a ${characterGender} ${characterClass} ${characterRace} fantasy character from the 1800s. Only return the name.`;
-    } catch (error) {
-      console.error(error);
-      return "Generate a cool fantasy character name. Only return the name.";
+  const extractChoiceText = (data) => {
+    // Matches your current backend shape: data.choices[0].text
+    const text = (data?.choices?.[0]?.text || "").trim();
+    return text;
+  };
+
+  const setLoading = (isLoading) => {
+    if (reGenButton) reGenButton.disabled = isLoading;
+    if (isLoading) {
+      nameEl.textContent = "Generating name...";
+      backstoryEl.textContent = "Generating backstory...";
     }
   };
 
-  const getBackstory = async () => {
-    const pElement = document.createElement("p");
-    pElement.id = "backstoryoutput";
-    pElement.textContent = "Loading, please wait...";
-    parentElement.append(pElement);
+  const generateBoth = async () => {
+    setLoading(true);
 
     try {
-      const response = await fetch("/api/chatgpt/getbackstory", {
-        method: "POST",
-        body: JSON.stringify({ prompt: await getBackstoryPrompt() }),
-        headers: { "Content-Type": "application/json" },
-      });
+      const lastCharacter = await fetchLastCharacter();
+      const { namePrompt, backstoryPrompt } = buildPrompts(lastCharacter);
 
-      const data = await response.json();
-      const text = (data.choices?.[0]?.text || "").trim();
+      // Run OpenAI calls in parallel
+      const [nameData, backstoryData] = await Promise.all([
+        postJson("/api/chatgpt/namegen", { prompt: namePrompt }),
+        postJson("/api/chatgpt/getbackstory", { prompt: backstoryPrompt }),
+      ]);
 
-      document.querySelector("#backstoryoutput").textContent =
-        text || "No backstory returned (check server logs / API key).";
-    } catch (error) {
-      console.error(error);
-      document.querySelector("#backstoryoutput").textContent =
-        "Error generating backstory.";
+      const nameText = extractChoiceText(nameData).replace(/\.$/, "");
+      const backstoryText = extractChoiceText(backstoryData);
+
+      nameEl.textContent = nameText || "No name returned.";
+      backstoryEl.textContent = backstoryText || "No backstory returned.";
+    } catch (err) {
+      console.error(err);
+      // Show the actual error so you know what's wrong in prod
+      nameEl.textContent = `Error: ${err.message}`;
+      backstoryEl.textContent = `Error: ${err.message}`;
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getName = async () => {
-    try {
-      const response = await fetch("/api/chatgpt/namegen", {
-        method: "POST",
-        body: JSON.stringify({ prompt: await getNamePrompt() }),
-        headers: { "Content-Type": "application/json" },
-      });
+  // Initial run
+  generateBoth();
 
-      const data = await response.json();
-      const text = (data.choices?.[0]?.text || "").trim().replace(/\.$/, "");
-
-      const pElement = document.createElement("p");
-      pElement.id = "genname";
-      pElement.textContent = text || "No name returned (check API key).";
-      parentElementName.append(pElement);
-    } catch (error) {
-      console.error(error);
-      const pElement = document.createElement("p");
-      pElement.id = "genname";
-      pElement.textContent = "Error generating name.";
-      parentElementName.append(pElement);
-    }
-  };
-
-  function reGen() {
-    document.querySelector("#genname")?.remove();
-    document.querySelector("#backstoryoutput")?.remove();
-    getBackstory();
-    getName();
-  }
-
-  // Run on page load
-  getBackstory();
-  getName();
-
-  // Button handler if button exists
-  reGenButton?.addEventListener("click", reGen);
+  // Regen button
+  reGenButton?.addEventListener("click", generateBoth);
 });
