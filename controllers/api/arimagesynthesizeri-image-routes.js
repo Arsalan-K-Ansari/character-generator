@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const imagapiKey = process.env.IMAGE_API_KEY;
-let reqHash = '';
+// let reqHash = '';
 
 // /api/images/imagegen
 router.post('/imagegen', async (req, res) => {
@@ -41,23 +41,39 @@ router.post('/imagegen', async (req, res) => {
 
 // /api/images/genimg
 
+// /api/images/genimg?hash=XYZ
 router.get('/genimg', async (req, res) => {
-  const url = `https://arimagesynthesizer.p.rapidapi.com/get?hash=${reqHash}&returnType=image`;
+  const hash = req.query.hash;
+  if (!hash) return res.status(400).json({ error: "Missing hash" });
+
+  const url = `https://arimagesynthesizer.p.rapidapi.com/get?hash=${encodeURIComponent(
+    hash
+  )}&returnType=image`;
+
   const options = {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'X-RapidAPI-Key': `${imagapiKey}`,
-      'X-RapidAPI-Host': 'arimagesynthesizer.p.rapidapi.com',
-      'content-type': 'image/jpg',
+      "X-RapidAPI-Key": `${imagapiKey}`,
+      "X-RapidAPI-Host": "arimagesynthesizer.p.rapidapi.com",
     },
   };
 
   try {
     const response = await fetch(url, options);
-    const result = await response.text();
-    res.send(result);
+
+    // If RapidAPI responds with JSON, it's probably "not ready yet"
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const json = await response.json();
+      return res.status(202).json(json); // still processing
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    res.set("Content-Type", contentType || "image/jpeg");
+    return res.send(Buffer.from(arrayBuffer));
   } catch (error) {
     console.error(error);
+    return res.status(500).json({ error: "Failed to fetch image" });
   }
 });
 
