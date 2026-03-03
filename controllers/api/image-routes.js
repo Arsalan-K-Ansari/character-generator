@@ -1,4 +1,4 @@
-// old rapid AI
+// old rapid API
 
 // const router = require('express').Router();
 // const imagapiKey = process.env.IMAGE_API_KEY;
